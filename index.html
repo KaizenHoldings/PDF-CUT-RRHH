@@ -1,0 +1,1800 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procesador de Expedientes RRHH</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc',
+                            400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca',
+                            800: '#3730a3', 900: '#312e81'
+                        }
+                    },
+                    keyframes: {
+                        'fade-in': { '0%': { opacity: 0, transform: 'translateY(6px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+                        'pop-in': { '0%': { opacity: 0, transform: 'scale(.96)' }, '100%': { opacity: 1, transform: 'scale(1)' } }
+                    },
+                    animation: {
+                        'fade-in': 'fade-in .25s ease-out both',
+                        'pop-in': 'pop-in .2s ease-out both'
+                    }
+                }
+            }
+        };
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        html,
+        body {
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .textLayer {
+            position: absolute;
+            left: 0;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            overflow: hidden;
+            opacity: .25;
+            line-height: 1;
+        }
+
+        .textLayer span {
+            color: transparent;
+            position: absolute;
+            white-space: pre;
+            cursor: text;
+            transform-origin: 0% 0%;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar {
+            height: 10px;
+            width: 10px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+            border: 2px solid transparent;
+            background-clip: content-box;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+            background-clip: content-box;
+        }
+
+        .gallery-item {
+            transition: transform .15s ease, box-shadow .15s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .gallery-item:hover {
+            transform: translateY(-2px) scale(1.03);
+            box-shadow: 0 8px 20px -6px rgba(79, 70, 229, .35);
+        }
+
+        .status-unassigned {
+            border: 2px dashed #cbd5e1;
+            opacity: .7;
+        }
+
+        .status-assigned {
+            border: 2px solid #10b981;
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, .12);
+        }
+
+        .status-error {
+            border: 2px solid #ef4444;
+            box-shadow: 0 0 0 4px rgba(239, 68, 68, .18);
+            animation: pulse-red 1.6s infinite;
+        }
+
+        @keyframes pulse-red {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 4px rgba(239, 68, 68, .18);
+            }
+
+            50% {
+                box-shadow: 0 0 0 7px rgba(239, 68, 68, .08);
+            }
+        }
+
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            background: #0f172a;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 6px 10px;
+            position: absolute;
+            z-index: 20;
+            bottom: 130%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity .2s;
+            font-size: 11px;
+            white-space: nowrap;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
+        }
+
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .seg-card {
+            transition: all .15s ease;
+        }
+
+        .seg-card:hover {
+            transform: translateY(-1px);
+        }
+
+        .fade-in {
+            animation: fade-in .3s ease-out both;
+        }
+
+        .pop-in {
+            animation: pop-in .2s ease-out both;
+        }
+
+        .gradient-brand {
+            background-image: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%);
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+
+    <!-- ============================================================ -->
+    <!-- PANTALLA 1: CARGA DE ARCHIVOS                                -->
+    <!-- ============================================================ -->
+    <div id="screen-upload" class="flex-1 flex flex-col min-h-screen">
+
+        <header class="bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-20">
+            <div class="max-w-6xl mx-auto px-6 py-4 flex items-center gap-3">
+                <div
+                    class="w-10 h-10 rounded-xl gradient-brand flex items-center justify-center shadow-lg shadow-brand-500/30">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-slate-900 leading-tight">Procesador de Expedientes RRHH</h1>
+                    <p class="text-xs text-slate-500">Divide, organiza y exporta documentos PDF por trabajador</p>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 flex items-center justify-center p-6">
+            <div
+                class="max-w-2xl w-full bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-100 p-8 fade-in">
+                <div class="text-center mb-8">
+                    <span
+                        class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-700 bg-brand-50 px-3 py-1 rounded-full border border-brand-100">
+                        Paso 1 de 2
+                    </span>
+                    <h2 class="mt-4 text-2xl font-extrabold text-slate-900">Carga tus archivos PDF</h2>
+                    <p class="mt-1 text-slate-500 text-sm">Arrastra los expedientes que quieras procesar. Todo ocurre en
+                        tu navegador: tus archivos nunca salen de tu equipo.</p>
+                </div>
+
+                <div id="dropzone"
+                    class="group border-2 border-dashed border-slate-300 bg-slate-50/60 hover:bg-brand-50/60 hover:border-brand-400 rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer transition-all">
+                    <div
+                        class="w-16 h-16 rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center group-hover:scale-105 group-hover:shadow-brand-200 transition-all">
+                        <svg class="w-7 h-7 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                    </div>
+                    <p class="mt-4 font-semibold text-slate-800">Haz clic o arrastra archivos PDF aquí</p>
+                    <p class="text-xs text-slate-500 mt-1">Puedes seleccionar varios a la vez</p>
+                    <input type="file" id="fileInput" class="hidden" multiple accept="application/pdf">
+                </div>
+
+                <div id="file-list-container" class="mt-6 hidden">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-slate-800 text-sm">Archivos listos <span id="file-count-badge"
+                                class="ml-2 text-xs font-bold text-brand-700 bg-brand-50 border border-brand-100 rounded-full px-2 py-0.5">0</span>
+                        </h3>
+                        <button onclick="clearAllRawFiles()"
+                            class="text-xs font-semibold text-slate-500 hover:text-red-600 transition-colors">Vaciar
+                            lista</button>
+                    </div>
+                    <ul id="file-list" class="space-y-2 mb-6 max-h-60 overflow-y-auto pr-2 scrollbar-thin"></ul>
+                    <button id="btn-process"
+                        class="w-full bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-brand-500/25 transition-all flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                        Procesar archivos
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="border-t border-slate-200 bg-white">
+            <div
+                class="max-w-6xl mx-auto px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+                <p>© <span id="year"></span> Procesador de Expedientes RRHH</p>
+                <p class="flex items-center gap-1.5">
+                    <svg class="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Procesamiento 100% local · Sin subidas a servidores
+                </p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- PANTALLA 2: ESPACIO DE TRABAJO                               -->
+    <!-- ============================================================ -->
+    <div id="screen-workspace" class="hidden flex-col h-screen overflow-hidden">
+
+        <header class="bg-white border-b border-slate-200 shadow-sm z-20 shrink-0">
+            <div class="px-6 py-3 flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div
+                        class="w-9 h-9 rounded-lg gradient-brand flex items-center justify-center shadow-md shadow-brand-500/30 shrink-0">
+                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                    </div>
+                    <div class="min-w-0">
+                        <h1 class="text-base font-extrabold text-slate-900 leading-tight truncate">Espacio de trabajo
+                        </h1>
+                        <div id="status-text" class="text-xs font-medium mt-0.5"></div>
+                    </div>
+                </div>
+                <div class="flex gap-2 shrink-0">
+                    <button onclick="confirmRestart()"
+                        class="text-slate-600 hover:text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg font-semibold text-sm border border-slate-200 hover:border-red-200 transition-colors flex items-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Reiniciar
+                    </button>
+                    <button id="btn-export" onclick="startExport()"
+                        class="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-5 py-2 rounded-lg font-bold text-sm shadow-md shadow-emerald-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Exportar ZIP
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <section class="bg-slate-100/70 border-b border-slate-200 px-6 py-3 shrink-0 overflow-x-auto scrollbar-thin">
+            <div class="flex items-center gap-2 mb-2">
+                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+                <h2 class="text-xs font-bold text-slate-600 uppercase tracking-wider">Auditoría visual de páginas</h2>
+                <span class="text-[10px] text-slate-400">· Haz clic en cualquier página para ampliarla</span>
+            </div>
+            <div id="gallery-container" class="flex gap-3 min-w-max pb-1"></div>
+        </section>
+
+        <div class="flex-1 overflow-y-auto p-6 scrollbar-thin bg-slate-50 relative">
+            <div id="unassigned-actions" class="mb-6 hidden max-w-5xl mx-auto">
+                <button onclick="openUnassignedModal()"
+                    class="w-full sm:w-auto bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 font-semibold py-2.5 px-4 rounded-xl shadow-sm transition-colors flex items-center gap-2 text-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Crear documento desde páginas sin asignar
+                </button>
+            </div>
+
+            <div id="documents-container" class="space-y-4 max-w-5xl mx-auto"></div>
+
+            <div id="empty-docs-state" class="hidden flex-col items-center justify-center py-16 text-center">
+                <div
+                    class="w-16 h-16 rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center mb-4">
+                    <svg class="w-7 h-7 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </div>
+                <p class="text-slate-600 font-semibold">No hay documentos definidos</p>
+                <p class="text-slate-400 text-sm mt-1 mb-4">Crea el primer documento para asignar las páginas.</p>
+                <button onclick="createFirstDocument()"
+                    class="bg-brand-600 hover:bg-brand-700 text-white font-bold py-2.5 px-6 rounded-xl shadow-md shadow-brand-500/25 transition-colors">Crear
+                    primer documento</button>
+            </div>
+        </div>
+
+        <footer class="border-t border-slate-200 bg-white shrink-0">
+            <div class="px-6 py-2.5 flex items-center justify-between text-[11px] text-slate-500">
+                <span>Procesador de Expedientes RRHH</span>
+                <span class="flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Los archivos se procesan localmente en tu navegador
+                </span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- OVERLAY -->
+    <div id="modal-overlay" class="fixed inset-0 bg-slate-900/50 z-40 hidden backdrop-blur-sm transition-opacity"></div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: SEPARACIÓN MULTIRANGO                                 -->
+    <!-- ============================================================ -->
+    <div id="modal-split"
+        class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-2xl z-50 hidden w-11/12 max-w-6xl max-h-[95vh] flex-col overflow-hidden">
+        <div
+            class="p-5 border-b border-slate-200 shrink-0 flex justify-between items-start gap-4 bg-gradient-to-r from-brand-50 to-white">
+            <div class="flex items-start gap-3 min-w-0">
+                <div
+                    class="w-10 h-10 rounded-xl bg-white border border-brand-100 shadow-sm flex items-center justify-center shrink-0">
+                    <svg class="w-5 h-5 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                    </svg>
+                </div>
+                <div class="min-w-0">
+                    <h2 id="split-title" class="text-lg font-extrabold text-slate-900 truncate">Separar documento</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Define los rangos de páginas y los datos de cada nuevo
+                        documento. Cada página debe pertenecer a un único rango.</p>
+                </div>
+            </div>
+            <button onclick="closeModal('modal-split')"
+                class="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg w-8 h-8 flex items-center justify-center text-xl font-bold transition-colors shrink-0">&times;</button>
+        </div>
+
+        <div class="flex-1 overflow-hidden flex flex-col md:flex-row bg-slate-50">
+            <div
+                class="w-full md:w-3/5 p-4 overflow-y-auto border-b md:border-b-0 md:border-r border-slate-200 scrollbar-thin relative">
+                <div class="sticky top-0 bg-slate-50 z-10 pb-3 mb-1">
+                    <h3 class="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Páginas del lote original
+                    </h3>
+                    <div class="flex flex-wrap gap-3 text-[11px] text-slate-500">
+                        <span class="flex items-center gap-1.5"><span
+                                class="w-3 h-3 rounded border-2 border-emerald-500 bg-emerald-50"></span>Seleccionada /
+                            Asignada</span>
+                        <span class="flex items-center gap-1.5"><span
+                                class="w-3 h-3 rounded border-2 border-red-500 bg-red-50"></span>Sin marcar /
+                            Error</span>
+                    </div>
+                </div>
+                <div id="split-gallery" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                </div>
+            </div>
+
+            <div class="w-full md:w-2/5 p-4 flex flex-col scrollbar-thin overflow-y-auto bg-slate-100">
+                <h3 class="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">Nuevos documentos resultantes
+                </h3>
+                <div id="split-segments-list" class="space-y-3 mb-3 flex-1"></div>
+
+                <button onclick="addSplitSegment()"
+                    class="w-full py-2.5 border-2 border-dashed border-brand-400 text-brand-700 font-bold rounded-xl hover:bg-brand-50 transition-colors bg-white text-sm flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Añadir otro rango
+                </button>
+                <p class="text-[10px] text-slate-500 text-center mt-1.5">Se copiarán los datos del rango activo (útil si
+                    es el mismo trabajador)</p>
+
+                <div id="split-validation-msg"
+                    class="mt-3 p-3 bg-white border border-slate-200 rounded-xl text-xs min-h-[64px] shadow-inner">
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 border-t border-slate-200 bg-white shrink-0 flex justify-end gap-3">
+            <button onclick="closeModal('modal-split')"
+                class="px-5 py-2.5 border border-slate-200 rounded-xl font-semibold text-slate-600 hover:bg-slate-50 transition-colors text-sm">Cancelar</button>
+            <button id="btn-confirm-split" disabled onclick="confirmSplit()"
+                class="px-5 py-2.5 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-brand-500/25 transition-all text-sm flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Guardar separación
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: VISTA PREVIA (LUPA)                                   -->
+    <!-- ============================================================ -->
+    <div id="modal-preview"
+        class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-2xl z-[60] hidden w-11/12 max-w-3xl max-h-[95vh] flex-col overflow-hidden">
+        <div
+            class="p-4 border-b border-slate-200 flex justify-between items-center shrink-0 bg-gradient-to-r from-slate-50 to-white">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-brand-50 border border-brand-100 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                </div>
+                <h2 id="preview-title" class="text-sm font-bold text-slate-800">Vista previa</h2>
+            </div>
+            <button onclick="closePreviewModal()"
+                class="text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg w-8 h-8 flex items-center justify-center text-xl font-bold transition-colors">&times;</button>
+        </div>
+        <div class="flex-1 overflow-y-auto bg-slate-200 p-4 scrollbar-thin text-center">
+            <div id="preview-canvas-container" class="relative shadow-2xl bg-white rounded max-w-full inline-block mx-auto align-top text-left">
+                <canvas id="preview-canvas" class="max-w-full h-auto block"></canvas>
+                <div id="preview-text-layer" class="textLayer hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: PÁGINAS SIN ASIGNAR  (CORREGIDO: flex-col + rediseño) -->
+    <!-- ============================================================ -->
+    <div id="modal-unassigned"
+        class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-2xl z-50 hidden w-11/12 max-w-lg max-h-[92vh] flex-col overflow-hidden">
+
+        <div
+            class="p-5 border-b border-slate-200 shrink-0 flex items-center gap-3 bg-gradient-to-r from-amber-50 to-white">
+            <div
+                class="w-10 h-10 rounded-xl bg-white border border-amber-200 shadow-sm flex items-center justify-center shrink-0">
+                <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+            </div>
+            <div class="min-w-0">
+                <h2 class="text-base font-extrabold text-slate-900 leading-tight">Crear documento desde páginas sin
+                    asignar</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Agrupa un rango de páginas en un nuevo documento.</p>
+            </div>
+        </div>
+
+        <div class="p-5 overflow-y-auto scrollbar-thin">
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-1.5">Página
+                        inicial</label>
+                    <input type="number" id="unassigned-start" placeholder="1" min="1"
+                        class="w-full px-3 py-3 text-lg font-bold text-center text-slate-800 bg-slate-50 border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-400 focus:border-brand-400 focus:bg-white outline-none transition-all">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-1.5">Página
+                        final</label>
+                    <input type="number" id="unassigned-end" placeholder="1" min="1"
+                        class="w-full px-3 py-3 text-lg font-bold text-center text-slate-800 bg-slate-50 border-2 border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-400 focus:border-brand-400 focus:bg-white outline-none transition-all">
+                </div>
+            </div>
+
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-2">
+                <svg class="w-4 h-4 text-slate-400 mt-0.5 shrink-0" fill="none" stroke="currentColor"
+                    viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p class="text-xs text-slate-600 leading-relaxed">Rango válido: <span id="unassigned-range-hint"
+                        class="font-bold text-slate-800">—</span>. El documento se creará con nombre temporal y podrás
+                    editarlo después.</p>
+            </div>
+
+            <div id="unassigned-error"
+                class="hidden mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 font-medium">
+            </div>
+        </div>
+
+        <div class="p-4 border-t border-slate-200 bg-slate-50 shrink-0 flex justify-end gap-3">
+            <button onclick="closeModal('modal-unassigned')"
+                class="px-5 py-2.5 border border-slate-200 bg-white rounded-xl text-slate-600 font-semibold hover:bg-slate-100 text-sm transition-colors">Cancelar</button>
+            <button onclick="confirmCreateUnassigned()"
+                class="px-5 py-2.5 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 shadow-md shadow-brand-500/25 text-sm transition-all">Crear
+                documento</button>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: ERRORES / AVISOS DE EXPORTACIÓN  (CORREGIDO)          -->
+    <!-- ============================================================ -->
+    <div id="modal-errors"
+        class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-2xl z-50 hidden w-11/12 max-w-xl max-h-[92vh] flex-col overflow-hidden">
+        <div class="p-5 border-b border-slate-200 shrink-0 flex items-center gap-3">
+            <div id="errors-icon"
+                class="w-11 h-11 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center shrink-0">
+                <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <div class="min-w-0">
+                <h2 id="errors-title" class="text-base font-extrabold text-slate-900 leading-tight">No se puede exportar
+                    todavía</h2>
+                <p id="errors-subtitle" class="text-xs text-slate-500 mt-0.5">Corrige los siguientes problemas y vuelve
+                    a intentarlo.</p>
+            </div>
+        </div>
+        <div class="p-5 overflow-y-auto scrollbar-thin">
+            <ul id="error-list" class="space-y-2 text-sm text-slate-700"></ul>
+        </div>
+        <div class="p-4 border-t border-slate-200 bg-slate-50 shrink-0 flex justify-end">
+            <button onclick="closeModal('modal-errors')"
+                class="px-5 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 hover:bg-slate-100 text-sm transition-colors">Entendido</button>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: CONFIRMACIÓN  (CORREGIDO)                             -->
+    <!-- ============================================================ -->
+    <div id="modal-confirm"
+        class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-2xl z-50 hidden w-11/12 max-w-md max-h-[92vh] flex-col overflow-hidden p-6 text-center">
+        <div
+            class="w-12 h-12 mx-auto rounded-full bg-red-50 border border-red-100 flex items-center justify-center mb-3 shrink-0">
+            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+        </div>
+        <h2 id="confirm-title" class="text-lg font-extrabold mb-1 text-slate-900"></h2>
+        <div id="confirm-msg" class="text-slate-500 text-sm mb-6 max-h-56 overflow-y-auto scrollbar-thin text-left">
+        </div>
+        <div class="flex justify-center gap-3 shrink-0">
+            <button onclick="closeModal('modal-confirm')"
+                class="px-4 py-2 border border-slate-200 rounded-lg font-bold text-slate-600 hover:bg-slate-50 text-sm">Cancelar</button>
+            <button id="btn-confirm-action"
+                class="px-4 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 text-sm shadow-md shadow-red-500/25">Confirmar</button>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODAL: CARGA                                                 -->
+    <!-- ============================================================ -->
+    <div id="modal-loading"
+        class="fixed inset-0 bg-white/90 backdrop-blur-sm z-[70] hidden flex-col items-center justify-center">
+        <div class="relative w-16 h-16">
+            <div class="absolute inset-0 rounded-full border-4 border-brand-100"></div>
+            <div class="absolute inset-0 rounded-full border-4 border-transparent border-t-brand-600 animate-spin">
+            </div>
+        </div>
+        <h2 id="loading-text" class="mt-5 text-lg font-bold text-slate-800">Procesando...</h2>
+        <p class="text-xs text-slate-500 mt-1">Esto puede tardar unos segundos</p>
+    </div>
+
+    <script>
+        /* ============================================================
+           ESTADO
+           ============================================================ */
+        const SEGMENT_COLORS = [
+            { border: '#4f46e5', bg: '#eef2ff', ring: 'rgba(79,70,229,.30)', text: '#3730a3' },
+            { border: '#db2777', bg: '#fdf2f8', ring: 'rgba(219,39,119,.30)', text: '#9d174d' },
+            { border: '#d97706', bg: '#fffbeb', ring: 'rgba(217,119,6,.30)', text: '#92400e' },
+            { border: '#059669', bg: '#ecfdf5', ring: 'rgba(5,150,105,.30)', text: '#065f46' },
+            { border: '#0891b2', bg: '#ecfeff', ring: 'rgba(8,145,178,.30)', text: '#155e75' },
+            { border: '#7c3aed', bg: '#f5f3ff', ring: 'rgba(124,58,237,.30)', text: '#5b21b6' },
+        ];
+
+        const state = {
+            rawFiles: [], filesMap: new Map(), globalPages: [],
+            documents: [], coverage: [], errors: [], warnings: []
+        };
+        let nextDocId = 1;
+        let nextGroupId = 1;
+
+        let splitOriginalDoc = null;
+        let splitSegments = [];
+        let activeSplitSegmentIndex = 0;
+        let splitOriginalGroupId = null;
+
+        /* ------------------------------------------------------------
+           FIX CLAVE: obtener la clase PDFDocument desde el bundle UMD
+           de pdf-lib. El bundle expone window.PDFLib.PDFDocument, NO
+           window.PDFDocument (causa del error "PDFDocument is not defined").
+           ------------------------------------------------------------ */
+        function getPDFDocumentClass() {
+            if (window.PDFLib && window.PDFLib.PDFDocument) return window.PDFLib.PDFDocument;
+            if (window.PDFDocument) return window.PDFDocument;
+            return null;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('year').textContent = new Date().getFullYear();
+
+            const dropzone = document.getElementById('dropzone');
+            const fileInput = document.getElementById('fileInput');
+
+            dropzone.addEventListener('click', () => fileInput.click());
+            dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('bg-brand-50', 'border-brand-400'); });
+            dropzone.addEventListener('dragleave', () => dropzone.classList.remove('bg-brand-50', 'border-brand-400'));
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('bg-brand-50', 'border-brand-400');
+                handleFiles(e.dataTransfer.files);
+            });
+            fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+            document.getElementById('btn-process').addEventListener('click', processFiles);
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    if (!document.getElementById('modal-preview').classList.contains('hidden')) { closePreviewModal(); return; }
+                    document.querySelectorAll('[id^="modal-"]:not(.hidden)').forEach(m => {
+                        if (m.id !== 'modal-loading' && m.id !== 'modal-overlay') closeModal(m.id);
+                    });
+                }
+            });
+        });
+
+        /* ============================================================
+           HELPERS
+           ============================================================ */
+        function showLoading(text) {
+            document.getElementById('loading-text').textContent = text;
+            document.getElementById('modal-loading').classList.remove('hidden');
+            document.getElementById('modal-loading').classList.add('flex');
+        }
+        function hideLoading() {
+            document.getElementById('modal-loading').classList.add('hidden');
+            document.getElementById('modal-loading').classList.remove('flex');
+        }
+        function setLoadingText(text) {
+            const el = document.getElementById('loading-text');
+            if (el) el.textContent = text;
+        }
+        function openModal(id) {
+            document.getElementById('modal-overlay').classList.remove('hidden');
+            const el = document.getElementById(id);
+            el.classList.remove('hidden');
+            el.classList.add('flex');
+        }
+        function closeModal(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.add('hidden');
+            el.classList.remove('flex');
+            const openModals = document.querySelectorAll('[id^="modal-"]:not(.hidden):not(#modal-overlay):not(#modal-loading)');
+            if (openModals.length === 0) document.getElementById('modal-overlay').classList.add('hidden');
+        }
+        function esc(s = '') { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+        function fmtList(arr, max = 24) {
+            if (!arr.length) return '—';
+            if (arr.length <= max) return arr.join(', ');
+            return arr.slice(0, max).join(', ') + `… (+${arr.length - max} más)`;
+        }
+        function nextFrame() { return new Promise(r => setTimeout(r, 0)); }
+
+        /* Modal de confirmación genérico */
+        function showConfirm({ title, html, confirmText = 'Confirmar', danger = true, onConfirm }) {
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-msg').innerHTML = html;
+            const btn = document.getElementById('btn-confirm-action');
+            btn.textContent = confirmText;
+            btn.className = danger
+                ? 'px-4 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 text-sm shadow-md shadow-red-500/25'
+                : 'px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 text-sm shadow-md shadow-emerald-500/25';
+            btn.onclick = () => { closeModal('modal-confirm'); onConfirm(); };
+            openModal('modal-confirm');
+        }
+
+        /* Muestra el modal de errores/avisos */
+        function showIssues({ title, subtitle, items, tone = 'error' }) {
+            document.getElementById('errors-title').textContent = title;
+            document.getElementById('errors-subtitle').textContent = subtitle;
+
+            const icon = document.getElementById('errors-icon');
+            icon.className = tone === 'error'
+                ? 'w-11 h-11 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center shrink-0'
+                : 'w-11 h-11 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0';
+            icon.innerHTML = tone === 'error'
+                ? '<svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>'
+                : '<svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
+
+            document.getElementById('error-list').innerHTML = items.map(e => `
+        <li class="flex gap-2 p-2.5 ${tone === 'error' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'} border rounded-lg">
+            <span class="${tone === 'error' ? 'text-red-800' : 'text-amber-800'}">${esc(e)}</span>
+        </li>`).join('');
+
+            openModal('modal-errors');
+        }
+
+        /* ============================================================
+           CARGA
+           ============================================================ */
+        function handleFiles(files) {
+            const fileList = Array.from(files);
+            const invalids = fileList.filter(f => f.type !== 'application/pdf');
+            if (invalids.length > 0) alert(`Se ignoraron ${invalids.length} archivo(s) que no son PDF.`);
+            fileList.filter(f => f.type === 'application/pdf').forEach(file => {
+                state.rawFiles.push({ id: 'raw_' + Date.now() + Math.random(), file });
+            });
+            renderUploadList();
+        }
+        function clearAllRawFiles() {
+            state.rawFiles = [];
+            renderUploadList();
+        }
+        function renderUploadList() {
+            const container = document.getElementById('file-list-container');
+            const ul = document.getElementById('file-list');
+            const badge = document.getElementById('file-count-badge');
+            ul.innerHTML = '';
+            badge.textContent = state.rawFiles.length;
+            if (state.rawFiles.length === 0) { container.classList.add('hidden'); return; }
+            container.classList.remove('hidden');
+            state.rawFiles.forEach((item) => {
+                const li = document.createElement('li');
+                li.className = 'flex justify-between items-center bg-slate-50 hover:bg-slate-100 p-3 rounded-xl border border-slate-200 transition-colors';
+                li.innerHTML = `
+            <div class="flex items-center gap-3 overflow-hidden min-w-0">
+                <div class="w-8 h-8 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
+                    <svg class="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/></svg>
+                </div>
+                <div class="min-w-0">
+                    <p class="truncate text-sm font-medium text-slate-800" title="${esc(item.file.name)}">${esc(item.file.name)}</p>
+                    <p class="text-[10px] text-slate-400">${(item.file.size / 1024).toFixed(0)} KB</p>
+                </div>
+            </div>
+            <button onclick="removeRawFile('${item.id}')" class="text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg w-7 h-7 flex items-center justify-center text-lg font-bold transition-colors shrink-0" title="Eliminar">&times;</button>`;
+                ul.appendChild(li);
+            });
+        }
+        function removeRawFile(id) {
+            state.rawFiles = state.rawFiles.filter(r => r.id !== id);
+            renderUploadList();
+        }
+
+        /* ============================================================
+           PROCESAR ARCHIVOS
+           ============================================================ */
+        async function processFiles() {
+            if (state.rawFiles.length === 0) return;
+            showLoading("Procesando PDFs...");
+            state.filesMap.clear(); state.globalPages = []; state.documents = []; nextDocId = 1; nextGroupId = 1;
+            let globalPageCounter = 1;
+
+            for (let i = 0; i < state.rawFiles.length; i++) {
+                const item = state.rawFiles[i];
+                try {
+                    const arrayBuffer = await item.file.arrayBuffer();
+                    // Copia ANTES de pasarla a pdf.js (pdf.js la transfiere al worker y la deja "detached")
+                    const bufferForPdfLib = arrayBuffer.slice(0);
+
+                    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    const fileId = 'file_' + i;
+                    state.filesMap.set(fileId, { file: item.file, pdfDoc, buffer: bufferForPdfLib });
+                    const docStartPage = globalPageCounter;
+
+                    for (let p = 1; p <= pdfDoc.numPages; p++) {
+                        state.globalPages.push({
+                            globalPage: globalPageCounter, fileId, localPage: p, pdfjsPage: await pdfDoc.getPage(p)
+                        });
+                        globalPageCounter++;
+                    }
+                    state.documents.push({
+                        id: 'doc_' + nextDocId++, startPage: docStartPage, endPage: globalPageCounter - 1,
+                        firstName: '', lastName: '', docName: 'Expediente ' + (i + 1), groupId: null
+                    });
+                } catch (err) {
+                    alert(`Error al leer ${item.file.name}: ${err.message}`);
+                }
+            }
+
+            if (state.globalPages.length > 0) {
+                document.getElementById('screen-upload').classList.add('hidden');
+                const ws = document.getElementById('screen-workspace');
+                ws.classList.remove('hidden'); ws.classList.add('flex');
+                await renderGallery();
+                updateStateAndUI();
+            } else {
+                alert("No se cargó ninguna página.");
+                state.rawFiles = []; renderUploadList();
+            }
+            hideLoading();
+        }
+
+        /* ============================================================
+           VALIDACIÓN GLOBAL
+           Errores  -> bloquean la exportación
+           Avisos   -> NO bloquean, solo se pide confirmación
+           ============================================================ */
+        function updateStateAndUI() {
+            const total = state.globalPages.length;
+            state.coverage = new Array(total + 1).fill(0);
+            state.errors = [];
+            state.warnings = [];
+            state.documents.sort((a, b) => a.startPage - b.startPage);
+
+            state.documents.forEach(doc => {
+                const rangeStr = `págs. ${doc.startPage}-${doc.endPage}`;
+                const label = `"${doc.docName || 'sin tipo'}" (${rangeStr})`;
+
+                if (!doc.startPage || !doc.endPage || doc.startPage > doc.endPage) {
+                    state.errors.push(`Documento ${label}: el rango de páginas es inválido.`);
+                } else if (doc.startPage < 1 || doc.endPage > total) {
+                    state.errors.push(`Documento ${label}: fuera de los límites (1-${total}).`);
+                } else {
+                    for (let i = doc.startPage; i <= doc.endPage; i++) state.coverage[i]++;
+                }
+
+                if (!doc.firstName.trim()) state.warnings.push(`Documento ${label}: falta "Nombres" (se usará la inicial "X").`);
+                if (!doc.lastName.trim()) state.warnings.push(`Documento ${label}: falta "Apellidos" (se usará "Xxx").`);
+                if (!doc.docName.trim()) state.warnings.push(`Documento ${label}: falta "Tipo de documento".`);
+            });
+
+            const unassignedList = [], duplicateList = [];
+            let assignedCount = 0;
+            for (let i = 1; i <= total; i++) {
+                if (state.coverage[i] === 0) unassignedList.push(i);
+                else if (state.coverage[i] === 1) assignedCount++;
+                else duplicateList.push(i);
+            }
+
+            if (unassignedList.length > 0) {
+                state.warnings.unshift(`Hay ${unassignedList.length} página(s) sin asignar: ${fmtList(unassignedList)}.`);
+            }
+
+            if (unassignedList.length > 0 && state.documents.length > 0) {
+                document.getElementById('unassigned-actions').classList.remove('hidden');
+            } else {
+                document.getElementById('unassigned-actions').classList.add('hidden');
+            }
+
+            if (duplicateList.length > 0) {
+                state.errors.push(`Las páginas ${fmtList(duplicateList)} están asignadas a más de un documento (solapamiento).`);
+            }
+
+            const statusText = document.getElementById('status-text');
+            if (state.errors.length === 0 && state.warnings.length === 0) {
+                statusText.innerHTML = `<span class="inline-flex items-center gap-1.5 text-emerald-700 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Todo listo · ${assignedCount}/${total} páginas asignadas</span>`;
+            } else if (state.errors.length === 0) {
+                statusText.innerHTML = `<span class="inline-flex items-center gap-1.5 text-amber-700 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>${state.warnings.length} aviso(s) · ${assignedCount}/${total} asignadas</span>`;
+            } else {
+                statusText.innerHTML = `<span class="inline-flex items-center gap-1.5 text-red-700 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>${state.errors.length} problema(s) · ${assignedCount}/${total} asignadas</span>`;
+            }
+
+            // Solo los errores bloqueantes desactivan el botón
+            document.getElementById('btn-export').disabled = state.errors.length > 0;
+            updateGalleryStyles();
+            renderDocuments();
+        }
+
+        function formatFilename(firstName, lastName, docName) {
+            let ape = "Xxx", n = "X";
+            if (lastName && lastName.trim()) {
+                const cl = lastName.trim().replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, '');
+                if (cl.length > 0) ape = cl.substring(0, 3).toLowerCase().replace(/^./, c => c.toUpperCase());
+            }
+            if (firstName && firstName.trim()) {
+                const cf = firstName.trim().replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, '');
+                if (cf.length > 0) n = cf.charAt(0).toUpperCase();
+            }
+            const dn = (docName && docName.trim()) ? docName.trim() : 'Documento';
+            return `(${ape}. ${n}) ${dn}`.replace(/[<>:"/\\|?*]/g, '') + ".pdf";
+        }
+
+        /* ============================================================
+           GALERÍA PRINCIPAL
+           ============================================================ */
+        async function renderGallery() {
+            const container = document.getElementById('gallery-container');
+            container.innerHTML = '';
+            for (let i = 0; i < state.globalPages.length; i++) {
+                const pInfo = state.globalPages[i];
+                
+                // Separación sutil entre distintos documentos originales
+                if (i > 0 && state.globalPages[i - 1].fileId !== pInfo.fileId) {
+                    const divider = document.createElement('div');
+                    divider.className = 'shrink-0 w-1 h-20 bg-slate-200/80 mx-3 self-center rounded-full';
+                    container.appendChild(divider);
+                }
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'gallery-item shrink-0 w-24 h-32 bg-white flex flex-col items-center justify-center rounded-xl overflow-hidden shadow-sm border border-slate-200 cursor-pointer transition-transform hover:scale-105';
+                wrapper.id = `thumb-wrap-${pInfo.globalPage}`;
+                wrapper.onclick = () => openPreview(pInfo.globalPage);
+                wrapper.title = `Página ${pInfo.globalPage}`;
+
+                const canvas = document.createElement('canvas');
+                canvas.className = 'w-full h-full object-contain p-1';
+                wrapper.appendChild(canvas);
+
+                const label = document.createElement('div');
+                label.className = 'absolute bottom-0 w-full bg-slate-900/70 backdrop-blur text-white text-[10px] text-center py-0.5 font-bold';
+                label.textContent = pInfo.globalPage;
+                wrapper.appendChild(label);
+                container.appendChild(wrapper);
+
+                setTimeout(() => {
+                    const viewport = pInfo.pdfjsPage.getViewport({ scale: 0.3 });
+                    canvas.width = viewport.width; canvas.height = viewport.height;
+                    pInfo.pdfjsPage.render({ canvasContext: canvas.getContext('2d'), viewport });
+                }, i * 15);
+            }
+
+            // Botón para añadir más PDFs al final de la galería
+            const addBtn = document.createElement('div');
+            addBtn.className = 'gallery-item shrink-0 w-24 h-32 bg-slate-100 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 cursor-pointer transition-all hover:bg-slate-200 hover:border-brand-400 hover:text-brand-600 text-slate-400 ml-3';
+            addBtn.title = "Añadir más documentos PDF";
+            addBtn.innerHTML = `
+                <svg class="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                <span class="text-[10px] font-bold text-center leading-tight">Añadir<br>PDF</span>
+            `;
+            addBtn.onclick = () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'application/pdf';
+                input.multiple = true;
+                input.onchange = (e) => appendNewFiles(e.target.files);
+                input.click();
+            };
+            container.appendChild(addBtn);
+        }
+
+        async function appendNewFiles(files) {
+            const fileList = Array.from(files).filter(f => f.type === 'application/pdf');
+            if (fileList.length === 0) return;
+            
+            showLoading("Añadiendo PDFs...");
+            let globalPageCounter = state.globalPages.length + 1;
+            const startIndex = state.rawFiles.length;
+
+            for (let i = 0; i < fileList.length; i++) {
+                const file = fileList[i];
+                state.rawFiles.push({ id: 'raw_' + Date.now() + Math.random(), file });
+                const currentIdx = startIndex + i;
+                
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const bufferForPdfLib = arrayBuffer.slice(0);
+                    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    const fileId = 'file_' + currentIdx;
+                    state.filesMap.set(fileId, { file, pdfDoc, buffer: bufferForPdfLib });
+                    const docStartPage = globalPageCounter;
+
+                    for (let p = 1; p <= pdfDoc.numPages; p++) {
+                        state.globalPages.push({
+                            globalPage: globalPageCounter, fileId, localPage: p, pdfjsPage: await pdfDoc.getPage(p)
+                        });
+                        globalPageCounter++;
+                    }
+                    state.documents.push({
+                        id: 'doc_' + nextDocId++, startPage: docStartPage, endPage: globalPageCounter - 1,
+                        firstName: '', lastName: '', docName: 'Expediente ' + (currentIdx + 1), groupId: null
+                    });
+                } catch (err) {
+                    alert(`Error al leer ${file.name}: ${err.message}`);
+                }
+            }
+            
+            await renderGallery();
+            updateStateAndUI();
+            hideLoading();
+            
+            setTimeout(() => {
+                const gallery = document.getElementById('gallery-container').parentElement;
+                gallery.scrollLeft = gallery.scrollWidth;
+            }, 100);
+        }
+
+        function updateGalleryStyles() {
+            for (let i = 1; i <= state.globalPages.length; i++) {
+                const wrap = document.getElementById(`thumb-wrap-${i}`);
+                if (!wrap) continue;
+                wrap.classList.remove('status-unassigned', 'status-assigned', 'status-error');
+                if (state.coverage[i] === 0) wrap.classList.add('status-unassigned');
+                else if (state.coverage[i] === 1) wrap.classList.add('status-assigned');
+                else wrap.classList.add('status-error');
+            }
+        }
+
+        /* ============================================================
+           LISTA DE DOCUMENTOS
+           ============================================================ */
+        function renderDocuments() {
+            const container = document.getElementById('documents-container');
+            const emptyState = document.getElementById('empty-docs-state');
+            container.innerHTML = '';
+            if (state.documents.length === 0) {
+                emptyState.classList.remove('hidden'); emptyState.classList.add('flex');
+                return;
+            }
+            emptyState.classList.add('hidden'); emptyState.classList.remove('flex');
+
+            state.documents.forEach((doc, index) => {
+                const isSingle = doc.startPage === doc.endPage;
+                const isInvalid = doc.startPage > doc.endPage || !doc.startPage || !doc.endPage;
+                const isGrouped = !!doc.groupId;
+                const canSplit = isGrouped || (!isSingle && !isInvalid);
+                const genName = formatFilename(doc.firstName, doc.lastName, doc.docName);
+                const hasRangeErr = doc.startPage > doc.endPage;
+
+                let originalFileName = '';
+                if (!isInvalid && state.globalPages[doc.startPage - 1]) {
+                    const fileId = state.globalPages[doc.startPage - 1].fileId;
+                    const fileData = state.filesMap.get(fileId);
+                    if (fileData && fileData.file) {
+                        originalFileName = fileData.file.name;
+                    }
+                }
+
+                const card = document.createElement('div');
+                card.className = 'bg-white p-5 rounded-2xl shadow-sm border border-slate-200 focus-within:ring-2 focus-within:ring-brand-400 focus-within:border-brand-400 transition-all hover:shadow-md fade-in';
+                card.innerHTML = `
+            <div class="flex flex-wrap justify-between items-start gap-3 mb-4">
+                <div class="flex items-center gap-2 min-w-0 flex-wrap">
+                    <span class="bg-brand-50 text-brand-700 text-[11px] font-bold px-2.5 py-1 rounded-lg border border-brand-100">Doc #${index + 1}</span>
+                    ${isGrouped ? `
+                        <span class="inline-flex items-center gap-1 bg-violet-50 text-violet-700 text-[10px] font-bold px-2 py-1 rounded-lg border border-violet-200">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                            Separado
+                        </span>` : ''}
+                    <span class="text-xs font-semibold text-slate-500 font-mono truncate" title="${esc(genName)}">${esc(genName)}</span>
+                    ${originalFileName ? `<span class="text-[10px] text-slate-400 truncate max-w-[150px] bg-slate-50 px-2 py-0.5 rounded border border-slate-200" title="Origen: ${esc(originalFileName)}">📄 ${esc(originalFileName)}</span>` : ''}
+                </div>
+                <div class="flex gap-2">
+                    <div class="tooltip relative flex">
+                        <button onclick="openSplitModal('${doc.id}')" ${!canSplit ? 'disabled' : ''}
+                            class="text-xs px-3.5 py-1.5 font-bold rounded-lg border transition-colors flex items-center gap-1.5 ${isGrouped
+                        ? 'bg-violet-50 text-violet-800 border-violet-200 hover:bg-violet-100'
+                        : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'} disabled:opacity-40 disabled:cursor-not-allowed">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                            ${isGrouped ? 'Editar separación' : 'Separar'}
+                        </button>
+                        ${(isSingle && !isGrouped) ? '<span class="tooltip-text">Una sola página</span>' : ''}
+                    </div>
+                    <button onclick="confirmDeleteDoc('${doc.id}')" class="text-xs px-3.5 py-1.5 bg-red-50 text-red-700 font-semibold rounded-lg hover:bg-red-100 border border-red-200 transition-colors flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>
+                        Borrar
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div class="md:col-span-1 md:border-r md:pr-4 border-slate-100">
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rango (global)</label>
+                    <div class="flex items-center gap-1.5">
+                        <input type="number" min="1" max="${state.globalPages.length}" value="${doc.startPage}"
+                            onchange="updateDoc('${doc.id}', 'startPage', this.value)"
+                            class="w-full p-2 border rounded-lg text-center text-sm font-bold outline-none focus:ring-2 focus:ring-brand-400 ${hasRangeErr ? 'border-red-400 bg-red-50' : 'border-slate-200'}">
+                        <span class="text-slate-300 text-xs">–</span>
+                        <input type="number" min="1" max="${state.globalPages.length}" value="${doc.endPage}"
+                            onchange="updateDoc('${doc.id}', 'endPage', this.value)"
+                            class="w-full p-2 border rounded-lg text-center text-sm font-bold outline-none focus:ring-2 focus:ring-brand-400 ${hasRangeErr ? 'border-red-400 bg-red-50' : 'border-slate-200'}">
+                    </div>
+                </div>
+                <div class="md:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Nombres *</label>
+                        <input type="text" value="${esc(doc.firstName)}" oninput="updateDoc('${doc.id}', 'firstName', this.value)"
+                            placeholder="Ej. María"
+                            class="w-full p-2 border rounded-lg outline-none text-sm focus:ring-2 focus:ring-brand-400 ${!doc.firstName.trim() ? 'border-red-300 bg-red-50' : 'border-slate-200'}">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Apellidos *</label>
+                        <input type="text" value="${esc(doc.lastName)}" oninput="updateDoc('${doc.id}', 'lastName', this.value)"
+                            placeholder="Ej. Pérez García"
+                            class="w-full p-2 border rounded-lg outline-none text-sm focus:ring-2 focus:ring-brand-400 ${!doc.lastName.trim() ? 'border-red-300 bg-red-50' : 'border-slate-200'}">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Tipo de documento *</label>
+                        <input type="text" value="${esc(doc.docName)}" oninput="updateDoc('${doc.id}', 'docName', this.value)"
+                            placeholder="Ej. Contrato"
+                            class="w-full p-2 border rounded-lg outline-none text-sm focus:ring-2 focus:ring-brand-400 ${!doc.docName.trim() ? 'border-red-300 bg-red-50' : 'border-slate-200'}">
+                    </div>
+                </div>
+            </div>
+        `;
+                container.appendChild(card);
+            });
+        }
+
+        function updateDoc(id, field, value) {
+            const doc = state.documents.find(d => d.id === id);
+            if (!doc) return;
+            if (field === 'startPage' || field === 'endPage') {
+                const v = parseInt(value, 10);
+                if (!isNaN(v)) doc[field] = v;
+                updateStateAndUI();
+            } else {
+                doc[field] = value;
+                clearTimeout(window.validationTimer);
+                window.validationTimer = setTimeout(updateStateAndUI, 350);
+            }
+        }
+        function confirmDeleteDoc(id) {
+            const doc = state.documents.find(d => d.id === id);
+            if (doc && doc.groupId) {
+                state.documents.forEach(d => { if (d.groupId === doc.groupId) d.groupId = null; });
+            }
+            state.documents = state.documents.filter(d => d.id !== id);
+            updateStateAndUI();
+        }
+        function createFirstDocument() {
+            const total = state.globalPages.length;
+            if (total === 0) return;
+            
+            let currentFileId = null;
+            let startPage = 1;
+            
+            for (let i = 0; i < total; i++) {
+                const page = state.globalPages[i];
+                if (currentFileId !== page.fileId) {
+                    if (currentFileId !== null) {
+                        const fileIndex = parseInt(currentFileId.split('_')[1], 10) + 1;
+                        state.documents.push({
+                            id: 'doc_' + nextDocId++, startPage: startPage, endPage: i,
+                            firstName: '', lastName: '', docName: 'Expediente ' + fileIndex, groupId: null
+                        });
+                    }
+                    currentFileId = page.fileId;
+                    startPage = i + 1;
+                }
+            }
+            if (currentFileId !== null) {
+                const fileIndex = parseInt(currentFileId.split('_')[1], 10) + 1;
+                state.documents.push({
+                    id: 'doc_' + nextDocId++, startPage: startPage, endPage: total,
+                    firstName: '', lastName: '', docName: 'Expediente ' + fileIndex, groupId: null
+                });
+            }
+            
+            updateStateAndUI();
+        }
+
+        /* ============================================================
+           SEPARACIÓN MULTIRANGO
+           ============================================================ */
+        function openSplitModal(docId) {
+            const clickedDoc = state.documents.find(d => d.id === docId);
+            if (!clickedDoc) return;
+
+            if (clickedDoc.groupId) {
+                splitOriginalGroupId = clickedDoc.groupId;
+                const groupDocs = state.documents
+                    .filter(d => d.groupId === clickedDoc.groupId)
+                    .sort((a, b) => a.startPage - b.startPage);
+
+                const first = groupDocs[0];
+                const last = groupDocs[groupDocs.length - 1];
+
+                splitOriginalDoc = {
+                    id: clickedDoc.id,
+                    startPage: first.startPage,
+                    endPage: last.endPage,
+                    docName: first.docName || 'Lote separado'
+                };
+
+                splitSegments = groupDocs.map(d => ({
+                    start: d.startPage,
+                    end: d.endPage,
+                    firstName: d.firstName,
+                    lastName: d.lastName,
+                    docName: d.docName
+                }));
+
+                document.getElementById('split-title').textContent = `Editando separación (págs. ${first.startPage}-${last.endPage})`;
+            } else {
+                splitOriginalGroupId = null;
+                splitOriginalDoc = clickedDoc;
+                splitSegments = [{
+                    start: clickedDoc.startPage,
+                    end: clickedDoc.endPage,
+                    firstName: clickedDoc.firstName,
+                    lastName: clickedDoc.lastName,
+                    docName: clickedDoc.docName
+                }];
+                document.getElementById('split-title').textContent = `Separando: ${clickedDoc.docName || 'documento'}`;
+            }
+
+            activeSplitSegmentIndex = 0;
+            renderSplitGallery();
+            renderSplitSegments();
+            openModal('modal-split');
+        }
+
+        function renderSplitGallery() {
+            const gallery = document.getElementById('split-gallery');
+            gallery.innerHTML = '';
+            for (let i = splitOriginalDoc.startPage; i <= splitOriginalDoc.endPage; i++) {
+                if (i > state.globalPages.length) continue;
+                const pInfo = state.globalPages[i - 1];
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'relative rounded-xl bg-white transition-all overflow-hidden group shadow-sm border-2 border-slate-200';
+                wrapper.id = `split-thumb-${i}`;
+
+                const canvas = document.createElement('canvas');
+                canvas.className = 'w-full h-32 object-contain p-1';
+                wrapper.appendChild(canvas);
+
+                const label = document.createElement('div');
+                label.className = 'text-center text-[10px] bg-slate-100 py-1 text-slate-700 font-bold border-t border-slate-200';
+                label.textContent = `Pág. ${i}`;
+                wrapper.appendChild(label);
+
+                const overlay = document.createElement('div');
+                overlay.className = 'absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/10 transition-all flex items-center justify-center cursor-pointer';
+                overlay.onclick = () => openPreview(i);
+
+                const zoomBtn = document.createElement('div');
+                zoomBtn.className = 'opacity-0 group-hover:opacity-100 bg-white text-brand-600 p-1.5 rounded-full shadow-lg transform scale-50 group-hover:scale-100 transition-all';
+                zoomBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"/></svg>`;
+                overlay.appendChild(zoomBtn);
+                wrapper.appendChild(overlay);
+                gallery.appendChild(wrapper);
+
+                setTimeout(() => {
+                    const viewport = pInfo.pdfjsPage.getViewport({ scale: 0.3 });
+                    canvas.width = viewport.width; canvas.height = viewport.height;
+                    pInfo.pdfjsPage.render({ canvasContext: canvas.getContext('2d'), viewport });
+                }, 10);
+            }
+        }
+
+        function renderSplitSegments() {
+            const list = document.getElementById('split-segments-list');
+            list.innerHTML = '';
+
+            splitSegments.forEach((seg, i) => {
+                const isActive = (i === activeSplitSegmentIndex);
+                const color = SEGMENT_COLORS[i % SEGMENT_COLORS.length];
+
+                const card = document.createElement('div');
+                card.className = `seg-card p-3 rounded-xl border bg-white shadow-sm cursor-text`;
+                card.style.borderColor = isActive ? color.border : '#e2e8f0';
+                card.style.boxShadow = isActive ? `0 0 0 3px ${color.ring}` : 'none';
+                card.onclick = () => setActiveSplit(i);
+
+                card.innerHTML = `
+            <div class="flex justify-between items-center mb-2">
+                <span class="font-bold text-[10px] uppercase tracking-wider px-2 py-1 rounded-md" style="background:${color.bg};color:${color.text};">
+                    Doc extraído ${i + 1}
+                </span>
+                ${splitSegments.length > 1 ? `<button onclick="event.stopPropagation(); removeSplitSegment(${i})" class="text-red-600 hover:text-red-800 hover:bg-red-50 text-[10px] font-bold px-2 py-1 rounded border border-red-200 transition-colors">Eliminar</button>` : ''}
+            </div>
+
+            <div class="flex gap-2 mb-2.5">
+                <div class="w-1/2">
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Inicio</label>
+                    <input type="number" min="${splitOriginalDoc.startPage}" max="${splitOriginalDoc.endPage}" value="${seg.start}"
+                        oninput="updateSplitSegment(${i}, 'start', this.value)" onfocus="setActiveSplit(${i})"
+                        class="w-full p-1.5 border border-slate-200 rounded-lg text-sm font-bold text-center outline-none focus:ring-2 focus:ring-brand-400">
+                </div>
+                <div class="w-1/2">
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Fin</label>
+                    <input type="number" min="${splitOriginalDoc.startPage}" max="${splitOriginalDoc.endPage}" value="${seg.end}"
+                        oninput="updateSplitSegment(${i}, 'end', this.value)" onfocus="setActiveSplit(${i})"
+                        class="w-full p-1.5 border border-slate-200 rounded-lg text-sm font-bold text-center outline-none focus:ring-2 focus:ring-brand-400">
+                </div>
+            </div>
+
+            <div class="space-y-1.5">
+                <input type="text" placeholder="Nombres del trabajador *" value="${esc(seg.firstName)}"
+                    oninput="updateSplitSegment(${i}, 'firstName', this.value)" onfocus="setActiveSplit(${i})"
+                    class="w-full p-1.5 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-400 ${!seg.firstName.trim() ? 'border-red-400 bg-red-50' : 'border-slate-200'}">
+                <input type="text" placeholder="Apellidos del trabajador *" value="${esc(seg.lastName)}"
+                    oninput="updateSplitSegment(${i}, 'lastName', this.value)" onfocus="setActiveSplit(${i})"
+                    class="w-full p-1.5 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-400 ${!seg.lastName.trim() ? 'border-red-400 bg-red-50' : 'border-slate-200'}">
+                <input type="text" placeholder="Tipo de documento (Ej. Contrato) *" value="${esc(seg.docName)}"
+                    oninput="updateSplitSegment(${i}, 'docName', this.value)" onfocus="setActiveSplit(${i})"
+                    class="w-full p-1.5 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-brand-400 ${!seg.docName.trim() ? 'border-red-400 bg-red-50' : 'border-slate-200'}">
+            </div>
+        `;
+                list.appendChild(card);
+            });
+            validateSplit();
+        }
+
+        function setActiveSplit(index) {
+            if (activeSplitSegmentIndex !== index) {
+                activeSplitSegmentIndex = index;
+                renderSplitSegments();
+            }
+        }
+
+        function updateSplitSegment(index, field, value) {
+            if (field === 'start' || field === 'end') splitSegments[index][field] = parseInt(value) || '';
+            else splitSegments[index][field] = value;
+            activeSplitSegmentIndex = index;
+            validateSplit();
+        }
+
+        function addSplitSegment() {
+            const sourceSeg = splitSegments[activeSplitSegmentIndex] || splitSegments[splitSegments.length - 1];
+
+            const offset = splitOriginalDoc.startPage;
+            const required = splitOriginalDoc.endPage - offset + 1;
+            const coverage = new Array(required).fill(0);
+            splitSegments.forEach(seg => {
+                const s = parseInt(seg.start), e = parseInt(seg.end);
+                if (!isNaN(s) && !isNaN(e)) {
+                    for (let i = s; i <= e; i++) {
+                        const idx = i - offset;
+                        if (idx >= 0 && idx < required) coverage[idx] = 1;
+                    }
+                }
+            });
+
+            let gapStart = -1, gapEnd = -1;
+            for (let i = 0; i < coverage.length; i++) {
+                if (coverage[i] === 0) {
+                    if (gapStart === -1) gapStart = i + offset;
+                    gapEnd = i + offset;
+                } else if (gapStart !== -1) break;
+            }
+
+            const nextStart = gapStart !== -1 ? gapStart : splitOriginalDoc.endPage;
+            const nextEnd = gapEnd !== -1 ? gapEnd : splitOriginalDoc.endPage;
+
+            splitSegments.push({
+                start: nextStart,
+                end: nextEnd,
+                firstName: sourceSeg.firstName,
+                lastName: sourceSeg.lastName,
+                docName: sourceSeg.docName
+            });
+            activeSplitSegmentIndex = splitSegments.length - 1;
+            renderSplitSegments();
+            setTimeout(() => {
+                const list = document.getElementById('split-segments-list');
+                list.scrollTop = list.scrollHeight;
+            }, 50);
+        }
+
+        function removeSplitSegment(index) {
+            splitSegments.splice(index, 1);
+            if (activeSplitSegmentIndex >= splitSegments.length) activeSplitSegmentIndex = splitSegments.length - 1;
+            renderSplitSegments();
+        }
+
+        function validateSplit() {
+            const errors = [];
+            const offset = splitOriginalDoc.startPage;
+            const requiredPages = splitOriginalDoc.endPage - offset + 1;
+            const coverage = new Array(requiredPages).fill(0);
+
+            splitSegments.forEach((seg, i) => {
+                const s = parseInt(seg.start), e = parseInt(seg.end);
+                if (isNaN(s) || isNaN(e)) errors.push(`Doc extraído ${i + 1}: páginas vacías.`);
+                else if (s > e) errors.push(`Doc extraído ${i + 1}: inicio (${s}) > fin (${e}).`);
+                else if (s < offset || e > splitOriginalDoc.endPage) errors.push(`Doc extraído ${i + 1}: fuera de rango.`);
+                else {
+                    for (let p = s; p <= e; p++) {
+                        const idx = p - offset;
+                        if (idx >= 0 && idx < requiredPages) coverage[idx]++;
+                    }
+                }
+                if (!seg.firstName.trim() || !seg.lastName.trim()) errors.push(`Doc extraído ${i + 1}: faltan nombres o apellidos.`);
+                if (!seg.docName.trim()) errors.push(`Doc extraído ${i + 1}: falta tipo de documento.`);
+            });
+
+            const unassigned = [], duplicates = [];
+            coverage.forEach((val, idx) => {
+                if (val === 0) unassigned.push(idx + offset);
+                if (val > 1) duplicates.push(idx + offset);
+            });
+
+            if (unassigned.length > 0) errors.push(`Páginas sin asignar en el rango (${unassigned.join(', ')}).`);
+            if (duplicates.length > 0) errors.push(`Páginas duplicadas en los rangos.`);
+
+            const msgDiv = document.getElementById('split-validation-msg');
+            const btnConfirm = document.getElementById('btn-confirm-split');
+
+            if (errors.length > 0) {
+                msgDiv.innerHTML = '<ul class="text-red-700 space-y-1">' + errors.map(e => `<li>• ${esc(e)}</li>`).join('') + '</ul>';
+                msgDiv.className = 'mt-3 p-3 bg-red-50 border border-red-200 rounded-xl text-xs min-h-[64px]';
+                btnConfirm.disabled = true;
+            } else {
+                msgDiv.innerHTML = '<div class="flex items-center text-emerald-700 font-bold gap-2"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Todos los rangos y datos están completos.</div>';
+                msgDiv.className = 'mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs min-h-[64px]';
+                btnConfirm.disabled = false;
+            }
+
+            highlightSplitGallery();
+        }
+
+        function highlightSplitGallery() {
+            for (let i = splitOriginalDoc.startPage; i <= splitOriginalDoc.endPage; i++) {
+                const wrap = document.getElementById(`split-thumb-${i}`);
+                if (!wrap) continue;
+                wrap.style.borderColor = '';
+                wrap.style.boxShadow = '';
+                wrap.style.opacity = '1';
+
+                const claiming = [];
+                splitSegments.forEach((seg, idx) => {
+                    const s = parseInt(seg.start), e = parseInt(seg.end);
+                    if (!isNaN(s) && !isNaN(e) && i >= s && i <= e) claiming.push(idx);
+                });
+
+                if (claiming.length === 0) {
+                    wrap.style.borderColor = '#ef4444';
+                    wrap.style.boxShadow = '0 0 0 3px rgba(239,68,68,.25)';
+                } else if (claiming.length > 1) {
+                    wrap.style.borderColor = '#ef4444';
+                    wrap.style.boxShadow = '0 0 0 3px rgba(239,68,68,.35)';
+                } else {
+                    const segIdx = claiming[0];
+                    wrap.style.borderColor = '#10b981';
+                    wrap.style.boxShadow = segIdx === activeSplitSegmentIndex ? '0 0 0 4px rgba(16,185,129,.35)' : '0 0 0 2px rgba(16,185,129,.2)';
+                }
+            }
+        }
+
+        function confirmSplit() {
+            if (document.getElementById('btn-confirm-split').disabled) return;
+
+            if (splitOriginalGroupId) {
+                state.documents = state.documents.filter(d => d.groupId !== splitOriginalGroupId);
+            } else {
+                const idx = state.documents.findIndex(d => d.id === splitOriginalDoc.id);
+                if (idx >= 0) state.documents.splice(idx, 1);
+            }
+
+            const groupId = splitOriginalGroupId || ('grp_' + (nextGroupId++));
+
+            splitSegments.forEach(seg => {
+                state.documents.push({
+                    id: 'doc_' + nextDocId++,
+                    startPage: parseInt(seg.start),
+                    endPage: parseInt(seg.end),
+                    firstName: seg.firstName.trim(),
+                    lastName: seg.lastName.trim(),
+                    docName: seg.docName.trim(),
+                    groupId: groupId
+                });
+            });
+
+            splitOriginalGroupId = null;
+            closeModal('modal-split');
+            updateStateAndUI();
+        }
+
+        /* ============================================================
+           VISTA PREVIA
+           ============================================================ */
+        async function openPreview(globalPageNum) {
+            const pInfo = state.globalPages[globalPageNum - 1];
+            if (!pInfo) return;
+            document.getElementById('preview-title').textContent = `Página ${globalPageNum}`;
+            const canvas = document.getElementById('preview-canvas');
+            const ctx = canvas.getContext('2d');
+            const textLayer = document.getElementById('preview-text-layer');
+            textLayer.innerHTML = '';
+
+            document.getElementById('modal-overlay').classList.remove('hidden');
+            document.getElementById('modal-preview').classList.remove('hidden');
+            document.getElementById('modal-preview').classList.add('flex');
+
+            const viewport = pInfo.pdfjsPage.getViewport({ scale: 1.5 });
+            canvas.width = viewport.width; canvas.height = viewport.height;
+            textLayer.style.width = `${viewport.width}px`; textLayer.style.height = `${viewport.height}px`;
+
+            await pInfo.pdfjsPage.render({ canvasContext: ctx, viewport }).promise;
+            const textContent = await pInfo.pdfjsPage.getTextContent();
+            pdfjsLib.renderTextLayer({ textContentSource: textContent, container: textLayer, viewport, textDivs: [] });
+        }
+
+        function closePreviewModal() {
+            document.getElementById('modal-preview').classList.add('hidden');
+            document.getElementById('modal-preview').classList.remove('flex');
+            if (document.getElementById('modal-split').classList.contains('hidden')) {
+                document.getElementById('modal-overlay').classList.add('hidden');
+            }
+        }
+
+        /* ============================================================
+           CREAR DOCUMENTO DESDE PÁGINAS SIN ASIGNAR
+           ============================================================ */
+        function openUnassignedModal() {
+            const errEl = document.getElementById('unassigned-error');
+            errEl.classList.add('hidden');
+            errEl.textContent = '';
+
+            const total = state.globalPages.length;
+            const unassigned = [];
+            for (let i = 1; i <= total; i++) if (state.coverage[i] === 0) unassigned.push(i);
+
+            const startInput = document.getElementById('unassigned-start');
+            const endInput = document.getElementById('unassigned-end');
+
+            if (unassigned.length > 0) {
+                // Prellenar con el primer bloque contiguo de páginas sin asignar
+                const first = unassigned[0];
+                let last = first;
+                for (let k = 1; k < unassigned.length; k++) {
+                    if (unassigned[k] === last + 1) last = unassigned[k];
+                    else break;
+                }
+                startInput.value = first;
+                endInput.value = last;
+            } else {
+                startInput.value = '';
+                endInput.value = '';
+            }
+
+            const hint = document.getElementById('unassigned-range-hint');
+            hint.textContent = unassigned.length === 0
+                ? `1-${total} · todas las páginas ya están asignadas`
+                : `1-${total} · sin asignar: ${fmtList(unassigned)}`;
+
+            openModal('modal-unassigned');
+            setTimeout(() => startInput.focus(), 60);
+        }
+
+        function confirmCreateUnassigned() {
+            const s = parseInt(document.getElementById('unassigned-start').value, 10);
+            const e = parseInt(document.getElementById('unassigned-end').value, 10);
+            const total = state.globalPages.length;
+
+            if (isNaN(s) || isNaN(e)) { showUnassignedErr('Indica la página inicial y la página final.'); return; }
+            if (s < 1 || e < 1 || s > total || e > total) { showUnassignedErr(`Las páginas deben estar entre 1 y ${total}.`); return; }
+            if (s > e) { showUnassignedErr(`La página inicial (${s}) no puede ser mayor que la final (${e}).`); return; }
+
+            const occupied = [];
+            for (let i = s; i <= e; i++) if (state.coverage[i] > 0) occupied.push(i);
+            if (occupied.length > 0) {
+                showUnassignedErr(`Estas páginas ya están asignadas a otro documento: ${fmtList(occupied)}.`);
+                return;
+            }
+
+            state.documents.push({
+                id: 'doc_' + nextDocId++, startPage: s, endPage: e,
+                firstName: '', lastName: '', docName: 'Documento ' + nextDocId, groupId: null
+            });
+            closeModal('modal-unassigned');
+            updateStateAndUI();
+        }
+
+        function showUnassignedErr(msg) {
+            const el = document.getElementById('unassigned-error');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
+
+        /* ============================================================
+           EXPORTACIÓN (FLUJO: validar -> confirmar avisos -> exportar)
+           ============================================================ */
+
+        /* Paso 1: validación y decisión */
+        function startExport() {
+            // Errores bloqueantes: no se puede exportar
+            if (state.errors.length > 0) {
+                showIssues({
+                    title: 'No se puede exportar todavía',
+                    subtitle: 'Corrige los siguientes problemas y vuelve a intentarlo.',
+                    items: state.errors,
+                    tone: 'error'
+                });
+                return;
+            }
+
+            // Solo avisos: pedir confirmación y permitir exportar igualmente
+            if (state.warnings.length > 0) {
+                const unassignedMsg = state.warnings.find(w => w.startsWith('Hay'));
+                const html = `
+            <p class="mb-3 text-slate-600">Se encontraron estas advertencias:</p>
+            <ul class="space-y-1.5 mb-3">
+                ${state.warnings.map(w => `<li class="flex gap-2 text-xs bg-amber-50 border border-amber-100 rounded-lg p-2 text-amber-800"><span>•</span><span>${esc(w)}</span></li>`).join('')}
+            </ul>
+            <p class="text-slate-500 text-xs">${unassignedMsg
+                        ? 'Las páginas sin asignar simplemente NO se incluirán en el ZIP. Si son hojas en blanco o material que no necesitas, puedes continuar.'
+                        : 'Los documentos se nombrarán con valores por defecto en los campos faltantes.'}</p>
+            <p class="text-slate-700 text-xs font-semibold mt-3">¿Deseas exportar de todas formas?</p>
+        `;
+                showConfirm({
+                    title: '¿Exportar de todas formas?',
+                    html: html,
+                    confirmText: 'Sí, exportar',
+                    danger: false,
+                    onConfirm: () => doExport()
+                });
+                return;
+            }
+
+            // Todo perfecto
+            doExport();
+        }
+
+        /* Paso 2: exportación real, robusta */
+        async function doExport() {
+            const PDFDocument = getPDFDocumentClass();
+            if (!PDFDocument) {
+                alert('❌ No se pudo cargar la librería pdf-lib.\n\nRevisa tu conexión a internet y recarga la página.');
+                return;
+            }
+
+            showLoading('Preparando archivos...');
+            await nextFrame();
+
+            const warnings = [];
+
+            try {
+                const zip = new JSZip();
+                const pdfLibCache = new Map();
+
+                /* --- 1. Abrir PDFs originales con pdf-lib --- */
+                let idx = 0;
+                for (const [id, data] of state.filesMap.entries()) {
+                    idx++;
+                    setLoadingText(`Abriendo PDF ${idx} de ${state.filesMap.size}...`);
+                    await nextFrame();
+                    try {
+                        let bytes = null;
+                        if (data.buffer && data.buffer.byteLength > 0) {
+                            bytes = new Uint8Array(data.buffer.slice(0));
+                        } else {
+                            // Respaldo: re-leer el archivo original si el buffer quedó vacío/detached
+                            const ab = await data.file.arrayBuffer();
+                            bytes = new Uint8Array(ab);
+                        }
+                        if (!bytes || bytes.length === 0) throw new Error('el buffer está vacío');
+
+                        const loaded = await PDFDocument.load(bytes, {
+                            ignoreEncryption: true,
+                            updateMetadata: false
+                        });
+                        pdfLibCache.set(id, loaded);
+                    } catch (e) {
+                        warnings.push(`No se pudo abrir "${data.file.name}": ${e.message}`);
+                    }
+                }
+
+                if (pdfLibCache.size === 0) {
+                    throw new Error('No se pudo abrir ninguno de los PDF de origen (posible archivo dañado o protegido).');
+                }
+
+                /* --- 2. Generar un PDF por documento --- */
+                const usedNames = new Map();
+                let generated = 0;
+
+                for (let d = 0; d < state.documents.length; d++) {
+                    const doc = state.documents[d];
+                    setLoadingText(`Generando PDF ${d + 1} de ${state.documents.length}...`);
+                    await nextFrame();
+
+                    try {
+                        const newPdf = await PDFDocument.create();
+                        let added = 0;
+
+                        for (let p = doc.startPage; p <= doc.endPage; p++) {
+                            const pInfo = state.globalPages[p - 1];
+                            if (!pInfo) continue;
+                            const src = pdfLibCache.get(pInfo.fileId);
+                            if (!src) continue;
+                            const [copiedPage] = await newPdf.copyPages(src, [pInfo.localPage - 1]);
+                            newPdf.addPage(copiedPage);
+                            added++;
+                        }
+
+                        if (added === 0) throw new Error('ninguna de sus páginas pudo copiarse (PDF origen no disponible)');
+
+                        const pdfBytes = await newPdf.save();
+
+                        let name = formatFilename(doc.firstName, doc.lastName, doc.docName);
+                        const used = usedNames.get(name) || 0;
+                        usedNames.set(name, used + 1);
+                        if (used > 0) name = name.replace(/\.pdf$/i, ` (${used}).pdf`);
+
+                        zip.file(name, pdfBytes);
+                        generated++;
+                    } catch (e) {
+                        warnings.push(`Documento "${doc.docName || doc.id}" (págs. ${doc.startPage}-${doc.endPage}): ${e.message}`);
+                    }
+                }
+
+                if (generated === 0) {
+                    throw new Error('No se pudo generar ningún documento. Revisa los PDF de origen.');
+                }
+
+                /* --- 3. Comprimir ZIP --- */
+                setLoadingText('Comprimiendo ZIP... 0%');
+                await nextFrame();
+
+                const zipBlob = await zip.generateAsync(
+                    {
+                        type: 'blob',
+                        compression: 'DEFLATE',
+                        compressionOptions: { level: 4 },
+                        streamFiles: false
+                    },
+                    (meta) => setLoadingText(`Comprimiendo ZIP... ${Math.round(meta.percent)}%`)
+                );
+
+                // Ocultar el loader ANTES de descargar (evita bloqueos del navegador)
+                hideLoading();
+                await nextFrame();
+
+                downloadBlob(zipBlob, 'Expedientes_RRHH_Extraidos.zip');
+
+                // Mostrar avisos posteriores si hubo documentos problemáticos
+                if (warnings.length > 0) {
+                    setTimeout(() => {
+                        showIssues({
+                            title: 'ZIP generado con avisos',
+                            subtitle: `Se exportaron ${generated} documento(s). Algunos elementos se omitieron:`,
+                            items: warnings,
+                            tone: 'warning'
+                        });
+                    }, 400);
+                }
+            } catch (err) {
+                console.error(err);
+                hideLoading();
+                alert('❌ Ocurrió un error al exportar:\n\n' + (err && err.message ? err.message : err));
+            }
+        }
+
+        /* Descarga robusta de Blob (FileSaver + fallback nativo) */
+        function downloadBlob(blob, filename) {
+            try {
+                if (typeof saveAs === 'function') {
+                    saveAs(blob, filename);
+                    return;
+                }
+            } catch (e) { /* usa fallback */ }
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.rel = 'noopener';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 2000);
+        }
+
+        /* ============================================================
+           REINICIO
+           ============================================================ */
+        function confirmRestart() {
+            if (state.documents.length > 0 || state.rawFiles.length > 0) {
+                showConfirm({
+                    title: 'Volver a empezar',
+                    html: '<p class="text-slate-500 text-sm">Se perderán todas las asignaciones y recortes actuales. ¿Deseas continuar?</p>',
+                    confirmText: 'Sí, reiniciar',
+                    danger: true,
+                    onConfirm: () => location.reload()
+                });
+            } else location.reload();
+        }
+    </script>
+</body>
+
+</html>
