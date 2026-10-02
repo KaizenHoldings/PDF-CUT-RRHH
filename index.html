@@ -824,6 +824,29 @@
             hideLoading();
         }
 
+        function deleteGlobalPage(pageNumber) {
+            if (!confirm(`¿Eliminar la página ${pageNumber}? Esta acción la descartará por completo.`)) return;
+            
+            const index = state.globalPages.findIndex(p => p.globalPage === pageNumber);
+            if (index === -1) return;
+            
+            state.globalPages.splice(index, 1);
+            
+            for (let i = index; i < state.globalPages.length; i++) {
+                state.globalPages[i].globalPage = i + 1;
+            }
+            
+            state.documents.forEach(doc => {
+                if (doc.startPage > pageNumber) doc.startPage--;
+                if (doc.endPage >= pageNumber) doc.endPage--;
+            });
+            
+            state.documents = state.documents.filter(doc => doc.startPage <= doc.endPage && doc.startPage > 0);
+            
+            renderGallery();
+            updateStateAndUI();
+        }
+
         /* ============================================================
            VALIDACIÓN GLOBAL
            Errores  -> bloquean la exportación
@@ -921,7 +944,7 @@
                 }
 
                 const wrapper = document.createElement('div');
-                wrapper.className = 'gallery-item shrink-0 w-24 h-32 bg-white flex flex-col items-center justify-center rounded-xl overflow-hidden shadow-sm border border-slate-200 cursor-pointer transition-transform hover:scale-105';
+                wrapper.className = 'gallery-item group shrink-0 w-24 h-32 bg-white flex flex-col items-center justify-center rounded-xl overflow-hidden shadow-sm border border-slate-200 cursor-pointer transition-transform hover:scale-105';
                 wrapper.id = `thumb-wrap-${pInfo.globalPage}`;
                 wrapper.onclick = () => openPreview(pInfo.globalPage);
                 wrapper.title = `Página ${pInfo.globalPage}`;
@@ -934,6 +957,19 @@
                 label.className = 'absolute bottom-0 w-full bg-slate-900/70 backdrop-blur text-white text-[10px] text-center py-0.5 font-bold';
                 label.textContent = pInfo.globalPage;
                 wrapper.appendChild(label);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'absolute top-1 right-1 w-5 h-5 bg-red-50 hover:bg-red-500 text-red-600 hover:text-white rounded flex items-center justify-center transition-colors shadow-sm opacity-0 group-hover:opacity-100 z-10 border border-red-200 hover:border-red-600';
+                deleteBtn.innerHTML = '&times;';
+                deleteBtn.style.fontSize = '14px';
+                deleteBtn.style.lineHeight = '1';
+                deleteBtn.title = 'Eliminar página';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteGlobalPage(pInfo.globalPage);
+                };
+                wrapper.appendChild(deleteBtn);
+
                 container.appendChild(wrapper);
 
                 setTimeout(() => {
@@ -1023,6 +1059,19 @@
            LISTA DE DOCUMENTOS
            ============================================================ */
         function renderDocuments() {
+            const activeEl = document.activeElement;
+            let activeId = null;
+            let selectionStart = null;
+            let selectionEnd = null;
+            
+            if (activeEl && activeEl.tagName === 'INPUT' && activeEl.id) {
+                activeId = activeEl.id;
+                if (activeEl.type === 'text') {
+                    selectionStart = activeEl.selectionStart;
+                    selectionEnd = activeEl.selectionEnd;
+                }
+            }
+
             const container = document.getElementById('documents-container');
             const emptyState = document.getElementById('empty-docs-state');
             container.innerHTML = '';
@@ -1085,11 +1134,11 @@
                 <div class="md:col-span-1 md:border-r md:pr-4 border-slate-100">
                     <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Rango (global)</label>
                     <div class="flex items-center gap-1.5">
-                        <input type="number" min="1" max="${state.globalPages.length}" value="${doc.startPage}"
+                        <input type="number" min="1" max="${state.globalPages.length}" value="${doc.startPage}" id="start-${doc.id}"
                             onchange="updateDoc('${doc.id}', 'startPage', this.value)"
                             class="w-full p-2 border rounded-lg text-center text-sm font-bold outline-none focus:ring-2 focus:ring-brand-400 ${hasRangeErr ? 'border-red-400 bg-red-50' : 'border-slate-200'}">
                         <span class="text-slate-300 text-xs">–</span>
-                        <input type="number" min="1" max="${state.globalPages.length}" value="${doc.endPage}"
+                        <input type="number" min="1" max="${state.globalPages.length}" value="${doc.endPage}" id="end-${doc.id}"
                             onchange="updateDoc('${doc.id}', 'endPage', this.value)"
                             class="w-full p-2 border rounded-lg text-center text-sm font-bold outline-none focus:ring-2 focus:ring-brand-400 ${hasRangeErr ? 'border-red-400 bg-red-50' : 'border-slate-200'}">
                     </div>
@@ -1097,19 +1146,19 @@
                 <div class="md:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Nombres *</label>
-                        <input type="text" value="${esc(doc.firstName)}" oninput="updateDoc('${doc.id}', 'firstName', this.value)"
+                        <input type="text" value="${esc(doc.firstName)}" oninput="updateDoc('${doc.id}', 'firstName', this.value)" id="first-${doc.id}"
                             placeholder="Ej. María"
                             class="w-full p-2 border rounded-lg outline-none text-sm focus:ring-2 focus:ring-brand-400 ${!doc.firstName.trim() ? 'border-red-300 bg-red-50' : 'border-slate-200'}">
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Apellidos *</label>
-                        <input type="text" value="${esc(doc.lastName)}" oninput="updateDoc('${doc.id}', 'lastName', this.value)"
+                        <input type="text" value="${esc(doc.lastName)}" oninput="updateDoc('${doc.id}', 'lastName', this.value)" id="last-${doc.id}"
                             placeholder="Ej. Pérez García"
                             class="w-full p-2 border rounded-lg outline-none text-sm focus:ring-2 focus:ring-brand-400 ${!doc.lastName.trim() ? 'border-red-300 bg-red-50' : 'border-slate-200'}">
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Tipo de documento *</label>
-                        <input type="text" value="${esc(doc.docName)}" oninput="updateDoc('${doc.id}', 'docName', this.value)"
+                        <input type="text" value="${esc(doc.docName)}" oninput="updateDoc('${doc.id}', 'docName', this.value)" id="name-${doc.id}"
                             placeholder="Ej. Contrato"
                             class="w-full p-2 border rounded-lg outline-none text-sm focus:ring-2 focus:ring-brand-400 ${!doc.docName.trim() ? 'border-red-300 bg-red-50' : 'border-slate-200'}">
                     </div>
@@ -1118,6 +1167,18 @@
         `;
                 container.appendChild(card);
             });
+            
+            if (activeId) {
+                setTimeout(() => {
+                    const elToFocus = document.getElementById(activeId);
+                    if (elToFocus) {
+                        elToFocus.focus();
+                        if (elToFocus.type === 'text' && selectionStart !== null) {
+                            elToFocus.setSelectionRange(selectionStart, selectionEnd);
+                        }
+                    }
+                }, 0);
+            }
         }
 
         function updateDoc(id, field, value) {
